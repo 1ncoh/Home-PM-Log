@@ -1,16 +1,10 @@
-import { randomUUID } from "crypto";
-import fs from "fs";
-import path from "path";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeNextDue } from "@/lib/dates";
 import { getCurrentUserId } from "@/lib/auth";
+import { storeImage } from "@/lib/storage";
 
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
-
-function sanitizeFilename(name: string) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
 
 export async function POST(
   req: Request,
@@ -51,20 +45,18 @@ export async function POST(
       );
     }
 
-    const uploadsDir = path.join(process.cwd(), "public", "uploads");
-    await fs.promises.mkdir(uploadsDir, { recursive: true });
-
-    const filename = `${Date.now()}-${randomUUID()}-${sanitizeFilename(image.name)}`;
-    const fullPath = path.join(uploadsDir, filename);
-    const bytes = await image.arrayBuffer();
-    await fs.promises.writeFile(fullPath, Buffer.from(bytes));
-
-    imageData = {
-      imagePath: `/uploads/${filename}`,
-      imageFilename: image.name,
-      imageMimeType: image.type,
-      imageSizeBytes: image.size,
-    };
+    try {
+      const stored = await storeImage({ file: image, userId, folder: "completions" });
+      imageData = {
+        imagePath: stored.path,
+        imageFilename: stored.originalFilename,
+        imageMimeType: stored.mimeType,
+        imageSizeBytes: stored.sizeBytes,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Image upload failed.";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
   }
 
   const completedAt = new Date();

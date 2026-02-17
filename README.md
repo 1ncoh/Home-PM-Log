@@ -17,6 +17,8 @@ Configure `.env` with your Supabase project values:
 - `DIRECT_URL` (Supabase direct Postgres URL)
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (server-only; used for storage uploads)
+- `SUPABASE_STORAGE_BUCKET` (bucket name for uploaded images)
 
 ## Local setup
 
@@ -40,5 +42,6 @@ This project now uses Prisma migrations (`prisma/migrations`) instead of `prisma
 
 ## Notes
 
-- Completion images are still stored locally at `public/uploads`.
+- In production, completion/attachment images are stored in Supabase Storage.
+- Local dev falls back to `public/uploads` if storage env vars are missing.
 - Task and category queries are scoped to the authenticated Supabase user ID.
