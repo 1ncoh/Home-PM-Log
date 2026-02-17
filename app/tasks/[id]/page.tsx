@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/auth";
+import { resolveStoredFileUrl } from "@/lib/storage";
 import TaskEditor from "./TaskEditor";
 import { redirect } from "next/navigation";
 
@@ -26,5 +27,14 @@ export default async function TaskPage({
   const task = await getTask(id, userId);
   if (!task) return <div className="card">Task not found.</div>;
 
-  return <TaskEditor task={task} />;
+  const completions = await Promise.all(
+    task.completions.map(async (completion) => ({
+      ...completion,
+      imagePath: completion.imagePath
+        ? await resolveStoredFileUrl(completion.imagePath)
+        : null,
+    })),
+  );
+
+  return <TaskEditor task={{ ...task, completions }} />;
 }

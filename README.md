@@ -43,5 +43,6 @@ This project now uses Prisma migrations (`prisma/migrations`) instead of `prisma
 ## Notes
 
 - In production, completion/attachment images are stored in Supabase Storage.
+- Image references are stored as `supabase://bucket/object` and rendered with signed URLs.
 - Local dev falls back to `public/uploads` if storage env vars are missing.
 - Task and category queries are scoped to the authenticated Supabase user ID.

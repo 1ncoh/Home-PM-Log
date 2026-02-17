@@ -15,6 +15,58 @@ function getStorageConfig() {
   return { url, serviceRoleKey, bucket };
 }
 
+function createStorageClient() {
+  const config = getStorageConfig();
+  if (!config) return null;
+
+  const supabase = createClient(config.url, config.serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  return { supabase, bucket: config.bucket, url: config.url };
+}
+
+function parseSupabaseRef(storedPath: string) {
+  if (!storedPath.startsWith("supabase://")) return null;
+  const raw = storedPath.replace("supabase://", "");
+  const slashIndex = raw.indexOf("/");
+  if (slashIndex <= 0) return null;
+  const bucket = raw.slice(0, slashIndex);
+  const objectPath = raw.slice(slashIndex + 1);
+  if (!objectPath) return null;
+  return { bucket, objectPath };
+}
+
+function parseSupabasePublicUrl(storedPath: string) {
+  const marker = "/storage/v1/object/public/";
+  const markerIndex = storedPath.indexOf(marker);
+  if (markerIndex < 0) return null;
+
+  const tail = storedPath.slice(markerIndex + marker.length);
+  const slashIndex = tail.indexOf("/");
+  if (slashIndex <= 0) return null;
+
+  const bucket = decodeURIComponent(tail.slice(0, slashIndex));
+  const objectPath = tail.slice(slashIndex + 1);
+  if (!objectPath) return null;
+  return { bucket, objectPath };
+}
+
+export async function resolveStoredFileUrl(storedPath: string) {
+  const fromRef = parseSupabaseRef(storedPath);
+  const fromPublicUrl = parseSupabasePublicUrl(storedPath);
+  const parsed = fromRef ?? fromPublicUrl;
+  if (!parsed) return storedPath;
+
+  const client = createStorageClient();
+  if (!client) return storedPath;
+
+  const { data, error } = await client.supabase.storage
+    .from(parsed.bucket)
+    .createSignedUrl(parsed.objectPath, 60 * 60 * 24 * 7);
+  if (error || !data?.signedUrl) return storedPath;
+  return data.signedUrl;
+}
+
 export async function storeImage({
   file,
   userId,
@@ -30,24 +82,19 @@ export async function storeImage({
   const filename = `${Date.now()}-${randomUUID()}-${sanitizeFilename(originalFilename)}`;
   const contentType = file.type || "application/octet-stream";
 
-  const config = getStorageConfig();
-  if (config) {
-    const supabase = createClient(config.url, config.serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
+  const client = createStorageClient();
+  if (client) {
     const objectPath = `${userId}/${folder}/${filename}`;
-    const { error } = await supabase.storage
-      .from(config.bucket)
+    const { error } = await client.supabase.storage
+      .from(client.bucket)
       .upload(objectPath, buffer, { contentType, upsert: false });
 
     if (error) {
       throw new Error(`Storage upload failed: ${error.message}`);
     }
 
-    const { data } = supabase.storage.from(config.bucket).getPublicUrl(objectPath);
     return {
-      path: data.publicUrl,
+      path: `supabase://${client.bucket}/${objectPath}`,
       originalFilename,
       mimeType: contentType,
       sizeBytes: buffer.length,
